@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "docs": "npx jsdoc-to-markdown ./index.js > docs/nalogAPIClass.md",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node tests/index.test.js"
   },
   "repository": {
     "type": "git",

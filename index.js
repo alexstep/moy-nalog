@@ -107,6 +107,8 @@ class NalogAPI {
       return this.token
     }
 
+    await this.authPromise
+
     const tokenPayload = {
       deviceInfo: {
         appVersion: '1.0.0',
@@ -118,7 +120,7 @@ class NalogAPI {
       },
       refreshToken: this.refreshToken
     }
-    await this.authPromise
+
     const response = await fetch(this.apiUrl + '/auth/token', {
       method: 'POST',
       headers: {
@@ -165,7 +167,7 @@ class NalogAPI {
     }
 
     if (method === 'GET') delete params.body
-    await this.authPromise
+
     return fetch(this.apiUrl + '/' + endpoint, params).then(r => r.json())
   }
 
@@ -198,7 +200,7 @@ class NalogAPI {
 
       services: [{
         name: name, // 'Предоставление информационных услуг #970/2495',
-        amount: Number(amount),
+        amount: Number(amount.toFixed(2)),
         quantity: Number(quantity)
       }],
 
