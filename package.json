@@ -1,6 +1,6 @@
 {
   "name": "moy-nalog",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Обёртка для API сервиса lknpd.nalog.ru",
   "main": "index.js",
   "scripts": {

@@ -146,11 +146,11 @@ class NalogAPI {
   /**
    * Вызов метода api
    * @param  {string} endpoint - url метода без слэша в начале (например `user`)
+   * @param  {enum} method='GET'
    * @param  {object} payload - данные для отправки в body
-   * @param  {enum} method='POST'
    * @returns {Promise(object)} - json ответа сервера
    */
-  async call (endpoint, payload, method = 'POST') {
+  async call (endpoint, method = 'GET', payload = {}) {
     const params = {
       method: method,
       headers: {
@@ -179,24 +179,14 @@ class NalogAPI {
    * @returns {Promise({id,printUrl,jsonUrl,data,approvedReceiptUuid})} - информация о созданном чеке, либо об ошибке
    */
   async addIncome ({ date = new Date(), name, quantity = 1, amount }) {
-    function dateToLocalISO (date = new Date()) {
-      date = new Date(date)
-      const off = date.getTimezoneOffset()
-      const absoff = Math.abs(off)
-      return (new Date(date.getTime() - off * 60 * 1000).toISOString().substr(0, 19) +
-              (off > 0 ? '-' : '+') +
-              (absoff / 60).toFixed(0).padStart(2, '0') + ':' +
-              (absoff % 60).toString().padStart(2, '0'))
-    }
-
-    const response = await this.call('income', {
+    const response = await this.call('income', 'POST', {
       paymentType: 'CASH',
       inn: null,
       ignoreMaxTotalIncomeRestriction: false,
       client: { contactPhone: null, displayName: null, incomeType: 'FROM_INDIVIDUAL' },
 
-      requestTime: dateToLocalISO(),
-      operationTime: dateToLocalISO(date),
+      requestTime: this.dateToLocalISO(),
+      operationTime: this.dateToLocalISO(date),
 
       services: [{
         name: name, // 'Предоставление информационных услуг #970/2495',
@@ -227,7 +217,17 @@ class NalogAPI {
    * @returns {Promise(object)}
    */
   async userInfo () {
-    return this.call('user', {}, 'GET')
+    return this.call('user')
+  }
+
+  dateToLocalISO (date = new Date()) {
+    date = new Date(date)
+    const off = date.getTimezoneOffset()
+    const absoff = Math.abs(off)
+    return (new Date(date.getTime() - off * 60 * 1000).toISOString().substr(0, 19) +
+            (off > 0 ? '-' : '+') +
+            (absoff / 60).toFixed(0).padStart(2, '0') + ':' +
+            (absoff % 60).toString().padStart(2, '0'))
   }
 }
 
