@@ -26,13 +26,13 @@ nalogAPI.addIncome({ name:'Предоставление информационн
 
   // ссылка на картинку с чеком
   return receipt.printUrl
-})
+}).catch(console.error)
 ```
 
 ### Примеры
 Вызов произвольного метода api (см. network в devtools на сайте lknpd.nalog.ru)
 ```javascript
-const stats = await nalogAPI.call('incomes/summary')
+const stats = await nalogAPI.call('incomes/summary').catch(console.error)
 ```
 
 Пример расширенного добавления дохода
@@ -53,7 +53,7 @@ const stats = await nalogAPI.call('incomes/summary')
     }],
 
     totalAmount: 99.99
-  })
+  }).catch(console.error)
 
   console.log(response)
 

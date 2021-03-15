@@ -18,7 +18,10 @@ const tests = {
 
   'Проверка авто-логина': async () => {
     const MyNalog = new NalogAPI({ login: USER, password: PASS })
-    const profile = await MyNalog.userInfo()
+    const profile = await MyNalog.userInfo().catch(err => {
+      console.error('autologin error', err)
+      throw err
+    })
 
     if (!profile || !profile.id) {
       console.error(profile)

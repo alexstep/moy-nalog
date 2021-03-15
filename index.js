@@ -55,13 +55,11 @@ class NalogAPI {
   /**
    * Авторизация пользователя
    * Получение refreshToken
-   * @param {string} username
+   * @param {string} login
    * @param {string} password
    * @returns {Promise(object)} - ответ метода /auth/
    */
-  auth (username, password) {
-    if (this.isAuth) return
-    this.isAuth = true
+  auth (login, password) {
     if (this.authPromise) { return this.authPromise }
 
     this.authPromise = fetch(this.apiUrl + '/auth/lkfl', {
@@ -76,7 +74,7 @@ class NalogAPI {
       referrer: 'https://lknpd.nalog.ru/',
       referrerPolicy: 'strict-origin-when-cross-origin',
       body: JSON.stringify({
-        username: username,
+        username: login,
         password: password,
         deviceInfo: {
           sourceDeviceId: this.sourceDeviceId,
@@ -88,11 +86,16 @@ class NalogAPI {
         }
       })
     }).then(r => r.json()).then(response => {
+      if (!response.refreshToken) {
+        throw new Error((response.message || 'Не получилось авторизоваться'))
+      }
       this.INN = response.profile.inn
       this.token = response.token
       this.tokenExpireIn = response.tokenExpireIn
       this.refreshToken = response.refreshToken
       return response
+    }).catch(err => {
+      throw err
     })
 
     return this.authPromise
@@ -103,10 +106,13 @@ class NalogAPI {
    * @returns {Promise(string)}
    */
   async getToken () {
-    if (this.token && new Date().getTime() - 60 * 1000 < new Date(this.tokenExpireIn).getTime()) {
+    if (this.token && this.tokenExpireIn && new Date().getTime() - 60 * 1000 < new Date(this.tokenExpireIn).getTime()) {
       return this.token
     }
 
+    if (!this.authPromise) {
+      throw new Error('Необходимо сначала авторизоваться')
+    }
     await this.authPromise
 
     const tokenPayload = {

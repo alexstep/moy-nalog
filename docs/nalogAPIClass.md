@@ -29,7 +29,7 @@
 * [NalogAPI](#NalogAPI)
     * [new NalogAPI(login, password, autologin)](#new_NalogAPI_new)
     * [.createDeviceId()](#NalogAPI+createDeviceId)
-    * [.auth(username, password)](#NalogAPI+auth) ⇒ <code>Promise(object)</code>
+    * [.auth(login, password)](#NalogAPI+auth) ⇒ <code>Promise(object)</code>
     * [.getToken()](#NalogAPI+getToken) ⇒ <code>Promise(string)</code>
     * [.call(endpoint, payload, method)](#NalogAPI+call) ⇒ <code>Promise(object)</code>
     * [.addIncome(date, name, amount)](#NalogAPI+addIncome) ⇒ <code>Promise({id,printUrl,jsonUrl,data,approvedReceiptUuid})</code>
@@ -53,7 +53,7 @@
 **Kind**: instance method of [<code>NalogAPI</code>](#NalogAPI)  
 <a name="NalogAPI+auth"></a>
 
-### nalogAPI.auth(username, password) ⇒ <code>Promise(object)</code>
+### nalogAPI.auth(login, password) ⇒ <code>Promise(object)</code>
 Авторизация пользователя
 Получение refreshToken
 
@@ -62,7 +62,7 @@
 
 | Param | Type |
 | --- | --- |
-| username | <code>string</code> | 
+| login | <code>string</code> | 
 | password | <code>string</code> | 
 
 <a name="NalogAPI+getToken"></a>
