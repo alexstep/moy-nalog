@@ -146,11 +146,13 @@ class NalogAPI {
   /**
    * Вызов метода api
    * @param  {string} endpoint - url метода без слэша в начале (например `user`)
-   * @param  {enum} method='GET'
    * @param  {object} payload - данные для отправки в body
+   * @param  {enum} method='GET'
    * @returns {Promise(object)} - json ответа сервера
    */
-  async call (endpoint, method = 'GET', payload = {}) {
+  async call (endpoint, payload, method = 'GET') {
+    if (payload) { method = 'POST' }
+
     const params = {
       method: method,
       headers: {
@@ -179,7 +181,7 @@ class NalogAPI {
    * @returns {Promise({id,printUrl,jsonUrl,data,approvedReceiptUuid})} - информация о созданном чеке, либо об ошибке
    */
   async addIncome ({ date = new Date(), name, quantity = 1, amount }) {
-    const response = await this.call('income', 'POST', {
+    const response = await this.call('income', {
       paymentType: 'CASH',
       inn: null,
       ignoreMaxTotalIncomeRestriction: false,

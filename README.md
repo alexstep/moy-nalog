@@ -37,7 +37,7 @@ const stats = await nalogAPI.call('incomes/summary')
 
 Пример расширенного добавления дохода
 ```javascript
-  const response = await nalogAPI.call('income', 'POST', {
+  const response = await nalogAPI.call('income', {
     paymentType: 'CASH',
     inn: null,
     ignoreMaxTotalIncomeRestriction: false,

@@ -31,7 +31,7 @@
     * [.createDeviceId()](#NalogAPI+createDeviceId)
     * [.auth(username, password)](#NalogAPI+auth) ⇒ <code>Promise(object)</code>
     * [.getToken()](#NalogAPI+getToken) ⇒ <code>Promise(string)</code>
-    * [.call(endpoint, method, payload)](#NalogAPI+call) ⇒ <code>Promise(object)</code>
+    * [.call(endpoint, payload, method)](#NalogAPI+call) ⇒ <code>Promise(object)</code>
     * [.addIncome(date, name, amount)](#NalogAPI+addIncome) ⇒ <code>Promise({id,printUrl,jsonUrl,data,approvedReceiptUuid})</code>
     * [.userInfo()](#NalogAPI+userInfo) ⇒ <code>Promise(object)</code>
 
@@ -73,7 +73,7 @@
 **Kind**: instance method of [<code>NalogAPI</code>](#NalogAPI)  
 <a name="NalogAPI+call"></a>
 
-### nalogAPI.call(endpoint, method, payload) ⇒ <code>Promise(object)</code>
+### nalogAPI.call(endpoint, payload, method) ⇒ <code>Promise(object)</code>
 Вызов метода api
 
 **Kind**: instance method of [<code>NalogAPI</code>](#NalogAPI)  
@@ -82,8 +82,8 @@
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
 | endpoint | <code>string</code> |  | url метода без слэша в начале (например `user`) |
-| method | <code>enum</code> | <code>&#x27;GET&#x27;</code> |  |
 | payload | <code>object</code> |  | данные для отправки в body |
+| method | <code>enum</code> | <code>&#x27;GET&#x27;</code> |  |
 
 <a name="NalogAPI+addIncome"></a>
 
