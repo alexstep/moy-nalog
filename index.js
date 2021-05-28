@@ -189,9 +189,8 @@ class NalogAPI {
   async addIncome ({ date = new Date(), name, quantity = 1, amount }) {
     const response = await this.call('income', {
       paymentType: 'CASH',
-      inn: null,
       ignoreMaxTotalIncomeRestriction: false,
-      client: { contactPhone: null, displayName: null, incomeType: 'FROM_INDIVIDUAL' },
+      client: { contactPhone: null, displayName: null, incomeType: 'FROM_INDIVIDUAL', inn: null },
 
       requestTime: this.dateToLocalISO(),
       operationTime: this.dateToLocalISO(date),
