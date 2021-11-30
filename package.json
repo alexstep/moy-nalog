@@ -1,5 +1,5 @@
 {
-  "name": "moy-nalog",
+  "name": "npd-api",
   "version": "1.0.5",
   "description": "Обёртка для API сервиса lknpd.nalog.ru",
   "main": "index.js",
@@ -9,15 +9,22 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/alexstep/moy-nalog.git"
+    "url": "git@github.com:yourkostylev/npd-api.git"
   },
   "keywords": [],
-  "author": "",
+  "author": "Alexander Stepanchenko <alex.step.kellas@gmail.com> (https://github.com/alexstep)",
+  "contributors": [
+    {
+      "name": "Yury Kostylev",
+      "email": "yourkostylev@gmail.com",
+      "url": "https://github.com/yourkostylev"
+    }
+  ],
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/alexstep/moy-nalog/issues"
+    "url": "https://github.com/yourkostylev/npd-api/issues"
   },
-  "homepage": "https://github.com/alexstep/moy-nalog#readme",
+  "homepage": "https://github.com/yourkostylev/npd-api#readme",
   "devDependencies": {
     "eslint": "^7.22.0",
     "eslint-config-standard": "^16.0.2",
