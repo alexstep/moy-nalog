@@ -11,13 +11,13 @@
 ## Использование
 Установите пакет
 ```bash
-npm i moy-nalog
+npm i npd-api
 ```
 
 
 Инициализаци и авторизация
 ```javascript
-const moyNalog = require('moy-nalog')
+const moyNalog = require('npd-api')
 
 const nalogAPI = new moyNalog({ username:'23456789', password: 'your_pass' })
 ```
@@ -64,5 +64,3 @@ const stats = await nalogAPI.call('incomes/summary').catch(console.error)
 
 
 [Подробное описание методов класса](/docs/nalogAPIClass.md)
-
-
