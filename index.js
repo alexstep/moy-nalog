@@ -67,9 +67,7 @@ class NalogAPI {
       headers: {
         accept: 'application/json, text/plain, */*',
         'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-        'cache-control': 'no-cache',
         'content-type': 'application/json',
-        pragma: 'no-cache'
       },
       referrer: 'https://lknpd.nalog.ru/',
       referrerPolicy: 'strict-origin-when-cross-origin',
@@ -132,9 +130,7 @@ class NalogAPI {
       headers: {
         accept: 'application/json, text/plain, */*',
         'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-        'cache-control': 'no-cache',
         'content-type': 'application/json',
-        pragma: 'no-cache'
       },
       referrer: 'https://lknpd.nalog.ru/sales',
       referrerPolicy: 'strict-origin-when-cross-origin',
@@ -165,9 +161,7 @@ class NalogAPI {
         authorization: 'Bearer ' + (await this.getToken()),
         accept: 'application/json, text/plain, */*',
         'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-        'cache-control': 'no-cache',
         'content-type': 'application/json',
-        pragma: 'no-cache'
       },
       referrer: 'https://lknpd.nalog.ru/sales/create',
       referrerPolicy: 'strict-origin-when-cross-origin',
