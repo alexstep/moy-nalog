@@ -104,7 +104,7 @@ class NalogAPI {
    * @returns {Promise(string)}
    */
   async getToken () {
-    if (this.token && this.tokenExpireIn && new Date().getTime() - 60 * 1000 < new Date(this.tokenExpireIn).getTime()) {
+    if (this.token && this.tokenExpireIn && new Date().getTime() + 60 * 1000 < new Date(this.tokenExpireIn).getTime()) {
       return this.token
     }
 
