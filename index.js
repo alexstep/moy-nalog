@@ -178,9 +178,19 @@ class NalogAPI {
    * @param  {date|string} date=now - время поступления денег
    * @param  {} name - название товара/услуги
    * @param  {} amount - стоимость
+   * @param  {} quantity - количество
+   * @param  {} services - массив, когда нужно несколько услуг
    * @returns {Promise({id,printUrl,jsonUrl,data,approvedReceiptUuid})} - информация о созданном чеке, либо об ошибке
    */
-  async addIncome ({ date = new Date(), name, quantity = 1, amount }) {
+  async addIncome ({ date = new Date(), name, quantity = 1, services, amount }) {
+    if (!services) {
+      services = [{
+        name: name, // 'Предоставление информационных услуг #970/2495',
+        amount: Number(amount.toFixed(2)),
+        quantity: Number(quantity)
+      }];
+    }
+    
     const response = await this.call('income', {
       paymentType: 'CASH',
       ignoreMaxTotalIncomeRestriction: false,
@@ -189,11 +199,7 @@ class NalogAPI {
       requestTime: this.dateToLocalISO(),
       operationTime: this.dateToLocalISO(date),
 
-      services: [{
-        name: name, // 'Предоставление информационных услуг #970/2495',
-        amount: Number(amount.toFixed(2)),
-        quantity: Number(quantity)
-      }],
+      services: services,
 
       totalAmount: (amount * quantity).toFixed(2)
     })
