@@ -1,0 +1,57 @@
+name: Publish Package
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail if the tag does not match package.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json ${pkg}. Expected v${pkg}."
+            exit 1
+          fi
+          echo "Releasing ${pkg}"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Require npm 11.5.1 or newer
+        run: |
+          npm install -g npm@11
+          node --input-type=module <<'EOF'
+          import { execSync } from 'node:child_process'
+          const version = execSync('npm --version', { encoding: 'utf8' }).trim()
+          const [major, minor, patch] = version.split('.').map(Number)
+          const ok = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)))
+          if (!ok) {
+            console.error(`npm ${version} is older than 11.5.1`)
+            process.exit(1)
+          }
+          console.log(`npm ${version}`)
+          EOF
+
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      - run: bun run build
+      - run: node scripts/smoke-node.mjs
+      - run: npm publish --access public
