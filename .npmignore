@@ -1,6 +1,8 @@
 tests
 docs
 .github
+.cursor
+AGENTS.md
 .editorconfig
 .eslintrc.js
 node_modules

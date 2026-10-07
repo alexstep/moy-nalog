@@ -3,9 +3,11 @@
   "version": "1.0.6",
   "description": "Обёртка для API сервиса lknpd.nalog.ru",
   "main": "index.js",
+  "types": "index.d.ts",
   "scripts": {
     "docs": "npx jsdoc-to-markdown ./index.js > docs/nalogAPIClass.md",
-    "test": "node tests/index.test.js"
+    "lint": "eslint index.js tests",
+    "test": "node --experimental-test-module-mocks --test --test-concurrency=1 tests/index.test.js"
   },
   "repository": {
     "type": "git",
@@ -19,12 +21,12 @@
   },
   "homepage": "https://github.com/alexstep/moy-nalog#readme",
   "dependencies": {
-    "cross-fetch": "^3.1.5"
+    "cross-fetch": "^3.2.0"
   },
-  "optionalDependencies": {
-    "eslint": "^7.22.0",
-    "eslint-config-standard": "^16.0.2",
-    "eslint-plugin-import": "^2.22.1",
+  "devDependencies": {
+    "eslint": "^7.32.0",
+    "eslint-config-standard": "^16.0.3",
+    "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-node": "^11.1.0",
     "eslint-plugin-promise": "^4.3.1"
   }
