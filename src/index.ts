@@ -133,7 +133,7 @@ class NalogAPI {
       refreshToken: this.refreshToken,
     }
 
-    const response = (await fetch(`${this.apiUrl}/auth/token`, {
+    const refresh = await fetch(`${this.apiUrl}/auth/token`, {
       method: 'POST',
       headers: {
         accept: 'application/json, text/plain, */*',
@@ -144,8 +144,7 @@ class NalogAPI {
       referrerPolicy: 'strict-origin-when-cross-origin',
       body: JSON.stringify(tokenPayload),
     })
-      .then((result) => result.json())
-      .catch(console.error)) as NalogAPI.TokenResponse
+    const response = (await refresh.json()) as NalogAPI.TokenResponse
 
     if (response.refreshToken) this.refreshToken = response.refreshToken
 

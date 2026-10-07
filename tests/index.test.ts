@@ -193,6 +193,18 @@ describe('getToken', () => {
     expect(requests.some((req) => req.url === `${API}/auth/token`)).toBe(false)
     expect(requests.some((req) => req.url === `${API}/user`)).toBe(true)
   })
+
+  it('пробрасывает ошибку обновления токена', async () => {
+    routes[`${API}/auth/lkfl`] = () =>
+      jsonResponse(authPayload(futureIso(30 * 1000)))
+    routes[`${API}/auth/token`] = () => {
+      throw new Error('сеть недоступна')
+    }
+    const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+    await api.authPromise
+
+    await expect(api.getToken()).rejects.toThrow('сеть недоступна')
+  })
 })
 
 describe('получение данных', () => {
