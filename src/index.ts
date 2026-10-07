@@ -87,17 +87,22 @@ class NalogAPI {
           },
         },
       }),
-    }).then(async (response) => {
-      const body = (await response.json()) as NalogAPI.AuthResponse
-      if (!body.refreshToken) {
-        throw new Error(body.message || 'Не получилось авторизоваться')
-      }
-      this.INN = body.profile.inn
-      this.token = body.token
-      this.tokenExpireIn = body.tokenExpireIn
-      this.refreshToken = body.refreshToken
-      return body
     })
+      .then(async (response) => {
+        const body = (await response.json()) as NalogAPI.AuthResponse
+        if (!body.refreshToken) {
+          throw new Error(body.message || 'Не получилось авторизоваться')
+        }
+        this.INN = body.profile.inn
+        this.token = body.token
+        this.tokenExpireIn = body.tokenExpireIn
+        this.refreshToken = body.refreshToken
+        return body
+      })
+      .catch((error: unknown) => {
+        this.authPromise = null
+        throw error
+      })
 
     return this.authPromise
   }

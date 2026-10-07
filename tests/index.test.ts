@@ -128,6 +128,27 @@ describe('auth', () => {
     expect(requests.length).toBe(1)
     expect(again.refreshToken).toBe('refresh-token')
   })
+
+  it('после ошибки логина повторный auth делает новый запрос', async () => {
+    let attempts = 0
+    routes[`${API}/auth/lkfl`] = () => {
+      attempts += 1
+      if (attempts === 1)
+        return jsonResponse({ message: 'Неверный логин или пароль' })
+      return jsonResponse(authPayload())
+    }
+    const api = new NalogAPI({ autologin: false })
+
+    await expect(api.auth(LOGIN, PASSWORD)).rejects.toThrow(
+      /Неверный логин или пароль/,
+    )
+    expect(api.authPromise).toBeNull()
+
+    const again = await api.auth(LOGIN, PASSWORD)
+    expect(again.refreshToken).toBe('refresh-token')
+    expect(attempts).toBe(2)
+    expect(api.token).toBe('access-token')
+  })
 })
 
 describe('getToken', () => {
