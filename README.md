@@ -21,7 +21,7 @@ npm i moy-nalog
 ```javascript
 const moyNalog = require('moy-nalog')
 
-const nalogAPI = new moyNalog({ username:'23456789', password: 'your_pass' })
+const nalogAPI = new moyNalog({ login:'23456789', password: 'your_pass' })
 ```
 
 Отправка информации о доходе
