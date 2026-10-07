@@ -10,7 +10,7 @@
 - `scripts/smoke-node.mjs` — `npm pack` и проверка `require` / `import` в обычном Node, без Bun.
 - `docs/nalogAPIClass.md` — старый снимок JSDoc. Актуальный контракт — `src/index.ts` и сгенерированные типы.
 - `.github/workflows/ci.yml` — lint, typecheck, test, build и smoke на Node 22 и 24.
-- `.github/workflows/npmpublish.yml` — публикация в npm только по тегу `v*`, после сборки. Самим не публиковать.
+- `.github/workflows/publish.yml` — публикация в npm только по тегу `v*`, через Trusted Publishing (OIDC). Секрет `NPM_TOKEN` не используется. Самим не публиковать и не создавать теги.
 
 Базовый URL API: `https://lknpd.nalog.ru/api/v1`. Методы, которые библиотека вызывает сама: `POST /auth/lkfl`, `POST /auth/token`, `GET /user`, `POST /income`, `GET /receipt/{inn}/{uuid}/json`. Произвольный путь можно послать через `call(endpoint, payload, method)`.
 
@@ -34,7 +34,7 @@ node scripts/smoke-node.mjs
 ## Правила
 
 - Не ломать публичный API: конструктор `{ login, password, autologin }`, методы `auth`, `getToken`, `call`, `addIncome`, `userInfo`, `dateToLocalISO`, поля `apiUrl`, `INN`, `token`, `tokenExpireIn`, `refreshToken`, `authPromise`, `sourceDeviceId`. `require('moy-nalog')` и `import NalogAPI from 'moy-nalog'` должны получать сам класс, не `{ default: ... }`.
-- Версию в `package.json` не менять и в npm не публиковать, пока это явно не попросили. Публикация в workflow привязана к тегу `v*` и требует предварительной сборки `dist/`.
+- Версию в `package.json` не менять и в npm не публиковать, пока это явно не попросили. Сейчас опубликована линия 1.x; релиз 2.0.0 готовится тегом `v2.0.0`, который должен совпадать с `version`. Публикация в `.github/workflows/publish.yml` идёт через OIDC, без `NODE_AUTH_TOKEN`.
 - Никаких реальных ИНН, телефонов, паролей, access/refresh-токенов и чеков в коде, тестах, фикстурах и коммитах. В примерах только явно фейковые значения вроде `000000000000` и `test-password`.
 - Все HTTP-запросы в тестах только через мок глобального `fetch`. Не вызывать `lknpd.nalog.ru` и не добавлять интеграционные тесты с боевым кабинетом.
 - Эндпоинты и формат тел запросов не менять без сверки с актуальными клиентами API и без описания расхождений. Сомнение — не менять код, а описать находку.
