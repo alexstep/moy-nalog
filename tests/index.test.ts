@@ -62,10 +62,6 @@ beforeEach(() => {
   }
 })
 
-// getToken смотрит срок токена до await authPromise. Если вызвать метод,
-// пока авторизация ещё не завершилась, библиотека сразу идёт в /auth/token.
-// В сценариях ниже сначала дожидаемся authPromise и проверяем уже выданный токен.
-
 describe('конструктор', () => {
   it('требует логин и пароль, если autologin не выключен', () => {
     expect(() => new NalogAPI({ password: PASSWORD })).toThrow(SyntaxError)
@@ -178,6 +174,24 @@ describe('getToken', () => {
         sourceType: 'WEB',
       },
     })
+  })
+
+  it('не обновляет токен, если метод вызван до завершения авторизации', async () => {
+    let releaseAuth: (response: Response) => void = () => {}
+    routes[`${API}/auth/lkfl`] = () =>
+      new Promise((resolve) => {
+        releaseAuth = resolve
+      })
+    routes[`${API}/user`] = () => jsonResponse({ id: 1 })
+
+    const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+    const pending = api.userInfo()
+    releaseAuth(jsonResponse(authPayload()))
+    const profile = await pending
+
+    expect(profile.id).toBe(1)
+    expect(requests.some((req) => req.url === `${API}/auth/token`)).toBe(false)
+    expect(requests.some((req) => req.url === `${API}/user`)).toBe(true)
   })
 })
 

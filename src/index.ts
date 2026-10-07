@@ -107,6 +107,8 @@ class NalogAPI {
    * Если до истечения меньше минуты, обновляет его через POST /auth/token.
    */
   async getToken(): Promise<string> {
+    if (this.authPromise) await this.authPromise
+
     if (
       this.token &&
       this.tokenExpireIn &&
@@ -118,7 +120,6 @@ class NalogAPI {
     if (!this.authPromise) {
       throw new Error('Необходимо сначала авторизоваться')
     }
-    await this.authPromise
 
     const tokenPayload = {
       deviceInfo: {
