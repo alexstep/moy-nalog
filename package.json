@@ -2,10 +2,36 @@
   "name": "moy-nalog",
   "version": "1.0.6",
   "description": "Обёртка для API сервиса lknpd.nalog.ru",
-  "main": "index.js",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "docs": "npx jsdoc-to-markdown ./index.js > docs/nalogAPIClass.md",
-    "test": "node tests/index.test.js"
+    "build": "bun run build:js && bun run build:types",
+    "build:js": "bun build src/index.ts --outfile dist/index.js --format esm --target node && bun build src/index.ts --outfile dist/index.cjs --format cjs --target node --footer \"module.exports = NalogAPI\"",
+    "build:types": "tsc --emitDeclarationOnly && bun scripts/write-cjs-types.ts",
+    "typecheck": "tsc --noEmit --pretty false",
+    "lint": "biome check .",
+    "test": "bun test",
+    "smoke": "node scripts/smoke-node.mjs"
   },
   "repository": {
     "type": "git",
@@ -18,14 +44,9 @@
     "url": "https://github.com/alexstep/moy-nalog/issues"
   },
   "homepage": "https://github.com/alexstep/moy-nalog#readme",
-  "dependencies": {
-    "cross-fetch": "^3.1.5"
-  },
-  "optionalDependencies": {
-    "eslint": "^7.22.0",
-    "eslint-config-standard": "^16.0.2",
-    "eslint-plugin-import": "^2.22.1",
-    "eslint-plugin-node": "^11.1.0",
-    "eslint-plugin-promise": "^4.3.1"
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0",
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.3"
   }
 }

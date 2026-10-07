@@ -1,0 +1,4 @@
+{
+  "name": "moy-nalog",
+  "install": "bash .cursor/install.sh"
+}

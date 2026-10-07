@@ -1,6 +1,12 @@
+src
 tests
+scripts
 docs
 .github
+.cursor
+AGENTS.md
 .editorconfig
-.eslintrc.js
+biome.json
+tsconfig.json
+bun.lock
 node_modules
