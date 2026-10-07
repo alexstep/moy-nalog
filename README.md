@@ -11,7 +11,7 @@
 
 
 ## Использование
-Установите пакет
+Установите пакет. Нужен Node.js 18 или новее: запросы идут через встроенный `fetch`.
 ```bash
 npm i moy-nalog
 ```
@@ -67,6 +67,20 @@ const stats = await nalogAPI.call('incomes/summary').catch(console.error)
 
 [Подробное описание методов класса](/docs/nalogAPIClass.md)
 
+## Разработка
+
+Исходники на TypeScript, в каталоге `src/`. Сборка и тесты запускаются через [Bun](https://bun.sh). Пользователям пакета Bun не нужен: в npm попадает `dist/` с ESM, CommonJS и сгенерированными типами. `require('moy-nalog')` по-прежнему возвращает класс.
+
+```bash
+bun install
+bun test
+bun run lint
+bun run typecheck
+bun run build
+node scripts/smoke-node.mjs
+```
+
+`bun test` подменяет глобальный `fetch` и не обращается к lknpd.nalog.ru. `node scripts/smoke-node.mjs` пакует собранный пакет и проверяет `require` и `import` обычным Node.js.
 
 ## Донаты
 Если вам помогла эта библиотка можете [пожертвовать автору немного денег](https://yoomoney.ru/to/41001265749624  )

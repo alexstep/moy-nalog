@@ -1,4 +1,4 @@
 {
   "name": "moy-nalog",
-  "install": "npm ci"
+  "install": "bash .cursor/install.sh"
 }
