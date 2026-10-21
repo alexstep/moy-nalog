@@ -46,7 +46,7 @@
   "homepage": "https://github.com/alexstep/moy-nalog#readme",
   "devDependencies": {
     "@biomejs/biome": "^2.2.0",
-    "@types/node": "^24.5.2",
-    "typescript": "^5.9.3"
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
   }
 }

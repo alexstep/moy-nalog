@@ -1,6 +1,91 @@
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_2_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.192 Safari/537.36'
 
+const REQUEST_TIMEOUT_MS = 30_000
+
+const JSON_HEADERS = {
+  accept: 'application/json, text/plain, */*',
+  'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+  'content-type': 'application/json',
+}
+
+interface RequestError extends Error {
+  status: number
+  body: unknown
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function requestFailed(
+  status: number,
+  body: unknown,
+  fallback: string,
+): RequestError {
+  const fromBody =
+    isRecord(body) && typeof body.message === 'string' && body.message
+      ? body.message
+      : null
+  const message = fromBody ?? `${fallback} (${status})`
+  const error = new Error(message) as RequestError
+  error.status = status
+  error.body = body
+  return error
+}
+
+async function readBody(response: Response): Promise<unknown> {
+  const text = await response.text()
+  if (!text) return null
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return text
+  }
+}
+
+function deviceInfo(sourceDeviceId: string) {
+  return {
+    sourceDeviceId,
+    sourceType: 'WEB',
+    appVersion: '1.0.0',
+    metaDetails: {
+      userAgent: USER_AGENT,
+    },
+  }
+}
+
+function roundMoney(value: number): number {
+  return Number(value.toFixed(2))
+}
+
+function isAuthResponse(body: unknown): body is NalogAPI.AuthResponse {
+  if (!isRecord(body)) return false
+  const profile = body.profile
+  return (
+    typeof body.token === 'string' &&
+    body.token.length > 0 &&
+    typeof body.refreshToken === 'string' &&
+    body.refreshToken.length > 0 &&
+    typeof body.tokenExpireIn === 'string' &&
+    body.tokenExpireIn.length > 0 &&
+    isRecord(profile) &&
+    typeof profile.inn === 'string' &&
+    profile.inn.length > 0
+  )
+}
+
+function isTokenResponse(body: unknown): body is NalogAPI.TokenResponse {
+  if (!isRecord(body)) return false
+  return (
+    typeof body.token === 'string' &&
+    body.token.length > 0 &&
+    typeof body.tokenExpireIn === 'string' &&
+    body.tokenExpireIn.length > 0 &&
+    (body.refreshToken === undefined || typeof body.refreshToken === 'string')
+  )
+}
+
 /**
  * Обёртка над API lknpd.nalog.ru («Мой налог»).
  * Подключение: `import NalogAPI from 'moy-nalog'` или `const NalogAPI = require('moy-nalog')`.
@@ -27,15 +112,26 @@ class NalogAPI {
   /** Refresh-токен */
   refreshToken: string
 
+  #timeoutMs: number
+
+  #refreshing: Promise<string> | null = null
+
   /**
    * @param options.autologin при true (по умолчанию) сразу вызывает auth и требует login и password
+   * @param options.timeoutMs таймаут одного HTTP-запроса в миллисекундах, по умолчанию 30000
    */
   constructor(options: NalogAPI.Options) {
     const autologin = options.autologin ?? true
     const login = options.login
     const password = options.password
+    const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS
     if (autologin && (!login || !password)) {
-      throw new SyntaxError('NalogAPI required login+password for auth')
+      throw new SyntaxError(
+        'NalogAPI: для входа нужны login и password (autologin включён)',
+      )
+    }
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new TypeError('timeoutMs должен быть положительным числом')
     }
 
     this.apiUrl = 'https://lknpd.nalog.ru/api/v1'
@@ -45,123 +141,64 @@ class NalogAPI {
     this.token = ''
     this.tokenExpireIn = ''
     this.refreshToken = ''
+    this.#timeoutMs = timeoutMs
 
     if (autologin) {
-      this.auth(login as string, password as string)
+      // Пустой обработчик гасит unhandledRejection, если вызывающий код ещё не ждёт промис.
+      // Сам authPromise при этом по-прежнему отклоняется.
+      void this.auth(login as string, password as string).catch(() => undefined)
     }
   }
 
-  /** Случайный идентификатор устройства для deviceInfo */
+  /** UUID устройства для deviceInfo */
   createDeviceId(): string {
-    return (
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15)
-    )
+    return crypto.randomUUID()
   }
 
   /**
    * POST /auth/lkfl. Сохраняет token, refreshToken, tokenExpireIn и INN.
-   * Без refreshToken в ответе промис отклоняется.
+   * Без успешного статуса и refreshToken промис отклоняется, поля сессии не меняются.
    */
   auth(login: string, password: string): Promise<NalogAPI.AuthResponse> {
     if (this.authPromise) return this.authPromise
 
-    this.authPromise = fetch(`${this.apiUrl}/auth/lkfl`, {
-      method: 'POST',
-      headers: {
-        accept: 'application/json, text/plain, */*',
-        'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-        'content-type': 'application/json',
-      },
-      referrer: 'https://lknpd.nalog.ru/',
-      referrerPolicy: 'strict-origin-when-cross-origin',
-      body: JSON.stringify({
-        username: login,
-        password: password,
-        deviceInfo: {
-          sourceDeviceId: this.sourceDeviceId,
-          sourceType: 'WEB',
-          appVersion: '1.0.0',
-          metaDetails: {
-            userAgent: USER_AGENT,
-          },
-        },
-      }),
+    this.authPromise = this.#login(login, password).catch((error: unknown) => {
+      this.authPromise = null
+      throw error
     })
-      .then(async (response) => {
-        const body = (await response.json()) as NalogAPI.AuthResponse
-        if (!body.refreshToken) {
-          throw new Error(body.message || 'Не получилось авторизоваться')
-        }
-        this.INN = body.profile.inn
-        this.token = body.token
-        this.tokenExpireIn = body.tokenExpireIn
-        this.refreshToken = body.refreshToken
-        return body
-      })
-      .catch((error: unknown) => {
-        this.authPromise = null
-        throw error
-      })
 
     return this.authPromise
   }
 
   /**
    * Возвращает действующий access-токен.
-   * Если до истечения меньше минуты, обновляет его через POST /auth/token.
+   * Если до истечения меньше минуты, один раз обновляет его через POST /auth/token.
+   * Параллельные вызовы ждут тот же запрос. Неуспешный ответ не затирает текущие токены.
    */
   async getToken(): Promise<string> {
     if (this.authPromise) await this.authPromise
 
-    if (
-      this.token &&
-      this.tokenExpireIn &&
-      Date.now() + 60 * 1000 < new Date(this.tokenExpireIn).getTime()
-    ) {
-      return this.token
-    }
+    if (this.#tokenIsFresh()) return this.token
 
-    if (!this.authPromise) {
+    if (!this.refreshToken) {
       throw new Error('Необходимо сначала авторизоваться')
     }
 
-    const tokenPayload = {
-      deviceInfo: {
-        appVersion: '1.0.0',
-        sourceDeviceId: this.sourceDeviceId,
-        sourceType: 'WEB',
-        metaDetails: {
-          userAgent: USER_AGENT,
-        },
-      },
-      refreshToken: this.refreshToken,
+    if (!this.#refreshing) {
+      const pending = this.#refreshAccessToken().finally(() => {
+        if (this.#refreshing === pending) this.#refreshing = null
+      })
+      this.#refreshing = pending
     }
 
-    const refresh = await fetch(`${this.apiUrl}/auth/token`, {
-      method: 'POST',
-      headers: {
-        accept: 'application/json, text/plain, */*',
-        'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-        'content-type': 'application/json',
-      },
-      referrer: 'https://lknpd.nalog.ru/sales',
-      referrerPolicy: 'strict-origin-when-cross-origin',
-      body: JSON.stringify(tokenPayload),
-    })
-    const response = (await refresh.json()) as NalogAPI.TokenResponse
-
-    if (response.refreshToken) this.refreshToken = response.refreshToken
-
-    this.token = response.token
-    this.tokenExpireIn = response.tokenExpireIn
-
-    return this.token
+    return this.#refreshing
   }
 
   /**
    * Вызов метода API. Если передан payload, метод принудительно становится POST.
    * Для GET тело не отправляется. В заголовок кладётся Bearer-токен.
+   * JSON-тело возвращается и при статусе не 2xx, чтобы вызывающий код по-прежнему читал message.
+   * Не-JSON отклоняет промис, как это делал разбор JSON.
    */
   async call(
     endpoint: string,
@@ -173,10 +210,8 @@ class NalogAPI {
     const params: RequestInit = {
       method: method,
       headers: {
+        ...JSON_HEADERS,
         authorization: `Bearer ${await this.getToken()}`,
-        accept: 'application/json, text/plain, */*',
-        'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-        'content-type': 'application/json',
       },
       referrer: 'https://lknpd.nalog.ru/sales/create',
       referrerPolicy: 'strict-origin-when-cross-origin',
@@ -185,14 +220,15 @@ class NalogAPI {
 
     if (method === 'GET') delete params.body
 
-    return fetch(`${this.apiUrl}/${endpoint}`, params).then((response) =>
-      response.json(),
-    )
+    const response = await this.#fetch(`${this.apiUrl}/${endpoint}`, params)
+    const text = await response.text()
+    return JSON.parse(text) as unknown
   }
 
   /**
    * POST /income и затем GET JSON чека.
-   * При отсутствии approvedReceiptUuid возвращает `{ error }`, а не бросает исключение.
+   * При отсутствии approvedReceiptUuid или при HTTP-ошибке регистрации возвращает `{ error }`.
+   * Если чек уже создан, сбой загрузки JSON не отклоняет промис: data остаётся undefined.
    */
   async addIncome({
     date = new Date(),
@@ -200,6 +236,13 @@ class NalogAPI {
     quantity = 1,
     amount,
   }: NalogAPI.AddIncomeParams): Promise<NalogAPI.AddIncomeResult> {
+    const count = Number(quantity)
+    if (!Number.isFinite(amount) || !Number.isFinite(count)) {
+      throw new TypeError('amount и quantity должны быть конечными числами')
+    }
+    const unit = roundMoney(amount)
+    const total = roundMoney(unit * count)
+
     const response = await this.call('income', {
       paymentType: 'CASH',
       ignoreMaxTotalIncomeRestriction: false,
@@ -214,11 +257,11 @@ class NalogAPI {
       services: [
         {
           name: name,
-          amount: Number(amount.toFixed(2)),
-          quantity: Number(quantity),
+          amount: unit,
+          quantity: count,
         },
       ],
-      totalAmount: (amount * quantity).toFixed(2),
+      totalAmount: total.toFixed(2),
     })
 
     if (!response?.approvedReceiptUuid) {
@@ -232,7 +275,13 @@ class NalogAPI {
       printUrl: `${this.apiUrl}/receipt/${this.INN}/${response.approvedReceiptUuid}/print`,
       data: undefined,
     }
-    result.data = await fetch(result.jsonUrl).then((receipt) => receipt.json())
+
+    try {
+      const receipt = await this.#fetch(result.jsonUrl, { method: 'GET' })
+      if (receipt.ok) result.data = JSON.parse(await receipt.text()) as unknown
+    } catch {
+      // Чек уже зарегистрирован. Повтор addIncome создал бы второй.
+    }
 
     return result
   }
@@ -245,15 +294,95 @@ class NalogAPI {
   /** Дата в локальном ISO с числовым смещением, как ждёт API */
   dateToLocalISO(date: Date | string = new Date()): string {
     const value = new Date(date)
+    if (Number.isNaN(value.getTime())) {
+      throw new TypeError('Некорректная дата')
+    }
     const off = value.getTimezoneOffset()
-    const absoff = Math.abs(off)
-    return (
-      new Date(value.getTime() - off * 60 * 1000).toISOString().slice(0, 19) +
-      (off > 0 ? '-' : '+') +
-      (absoff / 60).toFixed(0).padStart(2, '0') +
-      ':' +
-      (absoff % 60).toString().padStart(2, '0')
+    const abs = Math.abs(off)
+    const hours = Math.floor(abs / 60)
+    const minutes = abs % 60
+    const local = new Date(value.getTime() - off * 60 * 1000)
+      .toISOString()
+      .slice(0, 19)
+    const sign = off > 0 ? '-' : '+'
+    return `${local}${sign}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+  }
+
+  #tokenIsFresh(): boolean {
+    return Boolean(
+      this.token &&
+        this.tokenExpireIn &&
+        Date.now() + 60 * 1000 < new Date(this.tokenExpireIn).getTime(),
     )
+  }
+
+  async #login(
+    login: string,
+    password: string,
+  ): Promise<NalogAPI.AuthResponse> {
+    const response = await this.#fetch(`${this.apiUrl}/auth/lkfl`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      referrer: 'https://lknpd.nalog.ru/',
+      referrerPolicy: 'strict-origin-when-cross-origin',
+      body: JSON.stringify({
+        username: login,
+        password,
+        deviceInfo: deviceInfo(this.sourceDeviceId),
+      }),
+    })
+    const body = await readBody(response)
+    if (!response.ok || !isAuthResponse(body)) {
+      throw requestFailed(response.status, body, 'Не получилось авторизоваться')
+    }
+    this.INN = body.profile.inn
+    this.token = body.token
+    this.tokenExpireIn = body.tokenExpireIn
+    this.refreshToken = body.refreshToken
+    return body
+  }
+
+  async #refreshAccessToken(): Promise<string> {
+    const response = await this.#fetch(`${this.apiUrl}/auth/token`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      referrer: 'https://lknpd.nalog.ru/sales',
+      referrerPolicy: 'strict-origin-when-cross-origin',
+      body: JSON.stringify({
+        deviceInfo: deviceInfo(this.sourceDeviceId),
+        refreshToken: this.refreshToken,
+      }),
+    })
+    const body = await readBody(response)
+    if (!response.ok || !isTokenResponse(body)) {
+      throw requestFailed(response.status, body, 'Не получилось обновить токен')
+    }
+    if (body.refreshToken) this.refreshToken = body.refreshToken
+    this.token = body.token
+    this.tokenExpireIn = body.tokenExpireIn
+    return this.token
+  }
+
+  async #fetch(url: string, init: RequestInit): Promise<Response> {
+    const controller = new AbortController()
+    const timer = setTimeout(
+      () =>
+        controller.abort(
+          new DOMException(
+            `Превышен таймаут ${this.#timeoutMs} мс`,
+            'TimeoutError',
+          ),
+        ),
+      this.#timeoutMs,
+    )
+    if (typeof timer === 'object' && typeof timer.unref === 'function') {
+      timer.unref()
+    }
+    try {
+      return await fetch(url, { ...init, signal: controller.signal })
+    } finally {
+      clearTimeout(timer)
+    }
   }
 }
 
@@ -262,6 +391,8 @@ namespace NalogAPI {
     login?: string
     password?: string
     autologin?: boolean
+    /** Таймаут одного HTTP-запроса в миллисекундах. По умолчанию 30000. */
+    timeoutMs?: number
   }
 
   export interface AuthProfile {

@@ -5,15 +5,12 @@
 в МойНалог https://lknpd.nalog.ru/
 
 **Kind**: global class  
-**Use**: ```const nalog = NalogAPI({autologin:false})```
+**Use**: ```const nalog = new NalogAPI({ autologin: false })```
 
-  ```nalog.auth('301103735862','mypass')```
-
-  ```console.log(authPromise)```
+  ```await nalog.auth('000000000000', 'test-password')```
 
   ```await nalog.userInfo()```
 
-  ```console.log(authPromise)```  
 **Properties**
 
 | Name | Type | Default | Description |
@@ -27,7 +24,7 @@
 
 
 * [NalogAPI](#NalogAPI)
-    * [new NalogAPI(login, password, autologin)](#new_NalogAPI_new)
+    * [new NalogAPI(options)](#new_NalogAPI_new)
     * [.createDeviceId()](#NalogAPI+createDeviceId)
     * [.auth(login, password)](#NalogAPI+auth) ⇒ <code>Promise(object)</code>
     * [.getToken()](#NalogAPI+getToken) ⇒ <code>Promise(string)</code>
@@ -37,18 +34,21 @@
 
 <a name="new_NalogAPI_new"></a>
 
-### new NalogAPI(login, password, autologin)
+### new NalogAPI(options)
+
+Опции передаются объектом, не позиционными аргументами.
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| login | <code>string</code> |  | логин(обычно ИНН) от личного кабинета |
-| password | <code>string</code> |  | пароль |
-| autologin | <code>boolean</code> | <code>true</code> | сразу запускать .auth в конструкторе класса |
+| options.login | <code>string</code> |  | логин. В примерах только <code>000000000000</code> |
+| options.password | <code>string</code> |  | пароль. В примерах только <code>test-password</code> |
+| options.autologin | <code>boolean</code> | <code>true</code> | сразу вызывать auth. Без login и password конструктор бросает SyntaxError |
+| options.timeoutMs | <code>number</code> | <code>30000</code> | таймаут одного HTTP-запроса, миллисекунды |
 
 <a name="NalogAPI+createDeviceId"></a>
 
 ### nalogAPI.createDeviceId()
-Генерирует 21 символьный идентификатор "устройства" требующийся для авторизации
+Генерирует UUID устройства через `crypto.randomUUID()`. Идентификатор уходит в `deviceInfo.sourceDeviceId`.
 
 **Kind**: instance method of [<code>NalogAPI</code>](#NalogAPI)  
 <a name="NalogAPI+auth"></a>
@@ -91,7 +91,7 @@
 Добавления "прихода"
 
 **Kind**: instance method of [<code>NalogAPI</code>](#NalogAPI)  
-**Returns**: <code>Promise({id,printUrl,jsonUrl,data,approvedReceiptUuid})</code> - - информация о созданном чеке, либо об ошибке  
+**Returns**: <code>Promise({id,printUrl,jsonUrl,data,approvedReceiptUuid})</code> - созданный чек, либо <code>{ error }</code>, если чек не подтверждён. Если чек уже создан, а JSON чека не загрузился, промис выполняется: <code>data</code> остаётся <code>undefined</code>.  
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
