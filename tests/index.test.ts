@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { inspect } from 'node:util'
 import NalogAPI from '../src/index.ts'
 
 interface CapturedRequest {
@@ -120,23 +119,15 @@ describe('конструктор', () => {
     expect(requests).toHaveLength(0)
   })
 
-  it('не кладёт token и refreshToken в JSON и inspect', () => {
+  it('сохраняет token и refreshToken в JSON.stringify', () => {
     const api = new NalogAPI({ autologin: false })
     api.token = 'access-token'
     api.refreshToken = 'refresh-token'
     api.INN = LOGIN
-    api.tokenExpireIn = '2030-01-01T00:00:00.000Z'
     const parsed = JSON.parse(JSON.stringify(api)) as Record<string, unknown>
-    expect(parsed.token).toBeUndefined()
-    expect(parsed.refreshToken).toBeUndefined()
+    expect(parsed.token).toBe('access-token')
+    expect(parsed.refreshToken).toBe('refresh-token')
     expect(parsed.INN).toBe(LOGIN)
-    expect(parsed.apiUrl).toBe(API)
-    expect(JSON.stringify(api)).not.toContain('access-token')
-    expect(JSON.stringify(api)).not.toContain('refresh-token')
-    expect(inspect(api)).not.toContain('access-token')
-    expect(inspect(api)).not.toContain('refresh-token')
-    expect(api.token).toBe('access-token')
-    expect(api.refreshToken).toBe('refresh-token')
   })
 
   it('не ходит в сеть при autologin: false', () => {
@@ -472,14 +463,21 @@ describe('получение данных', () => {
     expect(req?.signal).toBeInstanceOf(AbortSignal)
   })
 
-  it('отклоняет промис, если API ответил ошибкой', async () => {
+  it('возвращает JSON тела при ошибочном статусе', async () => {
     routes[`${API}/user`] = () => jsonResponse({ message: 'не найдено' }, 404)
     const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
     await api.authPromise
 
-    const failed = api.userInfo()
-    await expect(failed).rejects.toThrow(/не найдено/)
-    await expect(failed).rejects.toMatchObject({ status: 404 })
+    await expect(api.userInfo()).resolves.toEqual({ message: 'не найдено' })
+  })
+
+  it('отклоняет промис, если тело ответа не JSON', async () => {
+    routes[`${API}/user`] = () =>
+      new Response('<html>bad</html>', { status: 502 })
+    const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+    await api.authPromise
+
+    await expect(api.userInfo()).rejects.toThrow(SyntaxError)
   })
 })
 

@@ -11,7 +11,6 @@
 
   ```await nalog.userInfo()```
 
-`JSON.stringify(nalog)` не включает `token` и `refreshToken`. Поля по-прежнему доступны напрямую.  
 **Properties**
 
 | Name | Type | Default | Description |

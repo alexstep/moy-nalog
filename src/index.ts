@@ -9,8 +9,6 @@ const JSON_HEADERS = {
   'content-type': 'application/json',
 }
 
-const INSPECT_CUSTOM = Symbol.for('nodejs.util.inspect.custom')
-
 interface RequestError extends Error {
   status: number
   body: unknown
@@ -18,12 +16,6 @@ interface RequestError extends Error {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
-}
-
-function isRequestError(error: unknown): error is RequestError {
-  return (
-    error instanceof Error && typeof (error as RequestError).status === 'number'
-  )
 }
 
 function requestFailed(
@@ -111,13 +103,13 @@ class NalogAPI {
   /** ИНН из profile после успешной авторизации */
   INN: string
 
-  /** Access-токен. Свойство доступно напрямую и не попадает в JSON.stringify. */
+  /** Access-токен */
   token: string
 
   /** Срок действия access-токена в виде строки даты */
   tokenExpireIn: string
 
-  /** Refresh-токен. Свойство доступно напрямую и не попадает в JSON.stringify. */
+  /** Refresh-токен */
   refreshToken: string
 
   #timeoutMs: number
@@ -156,20 +148,6 @@ class NalogAPI {
       // Сам authPromise при этом по-прежнему отклоняется.
       void this.auth(login as string, password as string).catch(() => undefined)
     }
-  }
-
-  /** Снимок без секретов для JSON.stringify и util.inspect. */
-  toJSON(): NalogAPI.PublicState {
-    return {
-      apiUrl: this.apiUrl,
-      sourceDeviceId: this.sourceDeviceId,
-      INN: this.INN,
-      tokenExpireIn: this.tokenExpireIn,
-    }
-  }
-
-  [INSPECT_CUSTOM](): NalogAPI.PublicState {
-    return this.toJSON()
   }
 
   /** UUID устройства для deviceInfo */
@@ -219,7 +197,8 @@ class NalogAPI {
   /**
    * Вызов метода API. Если передан payload, метод принудительно становится POST.
    * Для GET тело не отправляется. В заголовок кладётся Bearer-токен.
-   * Ответ со статусом не 2xx отклоняет промис. У объекта ошибки есть status и body.
+   * JSON-тело возвращается и при статусе не 2xx, чтобы вызывающий код по-прежнему читал message.
+   * Не-JSON отклоняет промис, как это делал разбор JSON.
    */
   async call(
     endpoint: string,
@@ -242,11 +221,8 @@ class NalogAPI {
     if (method === 'GET') delete params.body
 
     const response = await this.#fetch(`${this.apiUrl}/${endpoint}`, params)
-    const body = await readBody(response)
-    if (!response.ok) {
-      throw requestFailed(response.status, body, 'Запрос завершился ошибкой')
-    }
-    return body
+    const text = await response.text()
+    return JSON.parse(text) as unknown
   }
 
   /**
@@ -267,32 +243,26 @@ class NalogAPI {
     const unit = roundMoney(amount)
     const total = roundMoney(unit * count)
 
-    let response: any
-    try {
-      response = await this.call('income', {
-        paymentType: 'CASH',
-        ignoreMaxTotalIncomeRestriction: false,
-        client: {
-          contactPhone: null,
-          displayName: null,
-          incomeType: 'FROM_INDIVIDUAL',
-          inn: null,
+    const response = await this.call('income', {
+      paymentType: 'CASH',
+      ignoreMaxTotalIncomeRestriction: false,
+      client: {
+        contactPhone: null,
+        displayName: null,
+        incomeType: 'FROM_INDIVIDUAL',
+        inn: null,
+      },
+      requestTime: this.dateToLocalISO(),
+      operationTime: this.dateToLocalISO(date),
+      services: [
+        {
+          name: name,
+          amount: unit,
+          quantity: count,
         },
-        requestTime: this.dateToLocalISO(),
-        operationTime: this.dateToLocalISO(date),
-        services: [
-          {
-            name: name,
-            amount: unit,
-            quantity: count,
-          },
-        ],
-        totalAmount: total.toFixed(2),
-      })
-    } catch (error) {
-      if (isRequestError(error)) return { error: error.body }
-      throw error
-    }
+      ],
+      totalAmount: total.toFixed(2),
+    })
 
     if (!response?.approvedReceiptUuid) {
       return { error: response }
@@ -308,7 +278,7 @@ class NalogAPI {
 
     try {
       const receipt = await this.#fetch(result.jsonUrl, { method: 'GET' })
-      if (receipt.ok) result.data = await readBody(receipt)
+      if (receipt.ok) result.data = JSON.parse(await receipt.text()) as unknown
     } catch {
       // Чек уже зарегистрирован. Повтор addIncome создал бы второй.
     }
@@ -423,14 +393,6 @@ namespace NalogAPI {
     autologin?: boolean
     /** Таймаут одного HTTP-запроса в миллисекундах. По умолчанию 30000. */
     timeoutMs?: number
-  }
-
-  /** Поля экземпляра, которые безопасно попадают в JSON.stringify. */
-  export interface PublicState {
-    apiUrl: string
-    sourceDeviceId: string
-    INN: string
-    tokenExpireIn: string
   }
 
   export interface AuthProfile {
