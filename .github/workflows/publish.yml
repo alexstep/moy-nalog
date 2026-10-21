@@ -51,6 +51,7 @@ jobs:
           EOF
 
       - run: bun install --frozen-lockfile
+      - run: bun run lint
       - run: bun test
       - run: bun run build
       - run: node scripts/smoke-node.mjs

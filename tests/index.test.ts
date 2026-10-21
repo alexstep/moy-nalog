@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { inspect } from 'node:util'
 import NalogAPI from '../src/index.ts'
 
 interface CapturedRequest {
@@ -6,6 +7,7 @@ interface CapturedRequest {
   method: string
   headers: Record<string, string>
   body?: unknown
+  signal: AbortSignal | null
 }
 
 const requests: CapturedRequest[] = []
@@ -15,6 +17,34 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
+  })
+}
+
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException('The operation was aborted', 'AbortError')
+}
+
+async function finishWithSignal<T>(
+  signal: AbortSignal | null | undefined,
+  work: Promise<T>,
+): Promise<T> {
+  if (!signal) return work
+  if (signal.aborted) throw abortReason(signal)
+  return await new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortReason(signal))
+    signal.addEventListener('abort', onAbort, { once: true })
+    work.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
   })
 }
 
@@ -43,6 +73,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     method: init?.method ?? 'GET',
     headers,
     body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+    signal: init?.signal ?? null,
   }
   requests.push(entry)
 
@@ -52,7 +83,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       `Неожиданный HTTP-запрос в тесте: ${entry.method} ${entry.url}`,
     )
   }
-  return handler()
+  return finishWithSignal(init?.signal, Promise.resolve(handler()))
 }) as typeof fetch
 
 beforeEach(() => {
@@ -65,8 +96,47 @@ beforeEach(() => {
 describe('конструктор', () => {
   it('требует логин и пароль, если autologin не выключен', () => {
     expect(() => new NalogAPI({ password: PASSWORD })).toThrow(SyntaxError)
-    expect(() => new NalogAPI({})).toThrow(SyntaxError)
+    expect(() => new NalogAPI({})).toThrow(/login и password/)
     expect(requests.length).toBe(0)
+  })
+
+  it('даёт устройству UUID и не повторяет его', () => {
+    const api = new NalogAPI({ autologin: false })
+    expect(api.sourceDeviceId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    )
+    expect(api.createDeviceId()).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    )
+    expect(new NalogAPI({ autologin: false }).sourceDeviceId).not.toBe(
+      api.sourceDeviceId,
+    )
+  })
+
+  it('отклоняет неположительный timeoutMs', () => {
+    expect(() => new NalogAPI({ autologin: false, timeoutMs: 0 })).toThrow(
+      TypeError,
+    )
+    expect(requests).toHaveLength(0)
+  })
+
+  it('не кладёт token и refreshToken в JSON и inspect', () => {
+    const api = new NalogAPI({ autologin: false })
+    api.token = 'access-token'
+    api.refreshToken = 'refresh-token'
+    api.INN = LOGIN
+    api.tokenExpireIn = '2030-01-01T00:00:00.000Z'
+    const parsed = JSON.parse(JSON.stringify(api)) as Record<string, unknown>
+    expect(parsed.token).toBeUndefined()
+    expect(parsed.refreshToken).toBeUndefined()
+    expect(parsed.INN).toBe(LOGIN)
+    expect(parsed.apiUrl).toBe(API)
+    expect(JSON.stringify(api)).not.toContain('access-token')
+    expect(JSON.stringify(api)).not.toContain('refresh-token')
+    expect(inspect(api)).not.toContain('access-token')
+    expect(inspect(api)).not.toContain('refresh-token')
+    expect(api.token).toBe('access-token')
+    expect(api.refreshToken).toBe('refresh-token')
   })
 
   it('не ходит в сеть при autologin: false', () => {
@@ -119,6 +189,81 @@ describe('auth', () => {
       /Неверный логин или пароль/,
     )
     expect(api.token).toBe('')
+  })
+
+  it('не сохраняет токены из ответа с ошибочным статусом', async () => {
+    routes[`${API}/auth/lkfl`] = () =>
+      jsonResponse({ ...authPayload(), message: 'запрещено' }, 401)
+    const api = new NalogAPI({ autologin: false })
+
+    await expect(api.auth(LOGIN, PASSWORD)).rejects.toThrow(/запрещено/)
+    expect(api.token).toBe('')
+    expect(api.refreshToken).toBe('')
+    expect(api.INN).toBe('')
+    expect(api.authPromise).toBeNull()
+  })
+
+  it('отклоняет промис, если ответ авторизации не JSON', async () => {
+    routes[`${API}/auth/lkfl`] = () =>
+      new Response('<html>bad</html>', { status: 502 })
+    const api = new NalogAPI({ autologin: false })
+
+    await expect(api.auth(LOGIN, PASSWORD)).rejects.toThrow(/502/)
+    expect(api.token).toBe('')
+    expect(api.authPromise).toBeNull()
+  })
+
+  it('autologin не оставляет необработанный отказ входа', async () => {
+    const unhandled: unknown[] = []
+    const onUnhandled = (error: unknown) => {
+      unhandled.push(error)
+    }
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      routes[`${API}/auth/lkfl`] = () =>
+        jsonResponse({ message: 'Неверный логин или пароль' }, 401)
+      const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+      const pending = api.authPromise
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(unhandled).toEqual([])
+      await expect(pending).rejects.toThrow(/Неверный логин или пароль/)
+      expect(api.token).toBe('')
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
+  })
+
+  it('обрывает зависший вход по таймауту и не сохраняет токен', async () => {
+    routes[`${API}/auth/lkfl`] = () => new Promise(() => {})
+    const api = new NalogAPI({
+      autologin: false,
+      timeoutMs: 30,
+    })
+
+    await expect(api.auth(LOGIN, PASSWORD)).rejects.toThrow(/таймаут 30 мс/)
+    expect(api.authPromise).toBeNull()
+    expect(api.token).toBe('')
+  })
+
+  it('по умолчанию ставит таймаут запроса 30 секунд', async () => {
+    const scheduled: number[] = []
+    const original = globalThis.setTimeout
+    globalThis.setTimeout = ((
+      callback: TimerHandler,
+      delay?: number,
+      ...args: unknown[]
+    ) => {
+      if (typeof delay === 'number') scheduled.push(delay)
+      return original(callback as () => void, delay, ...args)
+    }) as typeof setTimeout
+    try {
+      const api = new NalogAPI({ autologin: false })
+      await api.auth(LOGIN, PASSWORD)
+      expect(scheduled).toContain(30_000)
+      expect(requests[0]?.signal).toBeInstanceOf(AbortSignal)
+    } finally {
+      globalThis.setTimeout = original
+    }
   })
 
   it('повторный вызов не отправляет второй запрос', async () => {
@@ -225,6 +370,88 @@ describe('getToken', () => {
     await api.authPromise
 
     await expect(api.getToken()).rejects.toThrow('сеть недоступна')
+    expect(api.token).toBe('access-token')
+    expect(api.refreshToken).toBe('refresh-token')
+  })
+
+  it('не затирает токены, если обновление вернуло ошибку', async () => {
+    routes[`${API}/auth/lkfl`] = () =>
+      jsonResponse(authPayload(futureIso(30 * 1000)))
+    routes[`${API}/auth/token`] = () =>
+      jsonResponse({ message: 'сессия истекла', token: 'чужой' }, 401)
+    const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+    await api.authPromise
+
+    await expect(api.getToken()).rejects.toThrow(/сессия истекла/)
+    expect(api.token).toBe('access-token')
+    expect(api.refreshToken).toBe('refresh-token')
+  })
+
+  it('не затирает токены, если в успешном ответе нет token', async () => {
+    routes[`${API}/auth/lkfl`] = () =>
+      jsonResponse(authPayload(futureIso(30 * 1000)))
+    routes[`${API}/auth/token`] = () => jsonResponse({ message: 'пусто' })
+    const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+    await api.authPromise
+
+    await expect(api.getToken()).rejects.toThrow(/пусто/)
+    expect(api.token).toBe('access-token')
+    expect(api.refreshToken).toBe('refresh-token')
+  })
+
+  it('после неудачного обновления следующий getToken делает новый запрос', async () => {
+    let attempts = 0
+    routes[`${API}/auth/lkfl`] = () =>
+      jsonResponse(authPayload(futureIso(30 * 1000)))
+    routes[`${API}/auth/token`] = () => {
+      attempts += 1
+      if (attempts === 1) return jsonResponse({ message: 'временно' }, 503)
+      return jsonResponse({
+        token: 'access-token-2',
+        refreshToken: 'refresh-token-2',
+        tokenExpireIn: futureIso(),
+      })
+    }
+    const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+    await api.authPromise
+
+    await expect(api.getToken()).rejects.toThrow(/временно/)
+    await expect(api.getToken()).resolves.toBe('access-token-2')
+    expect(attempts).toBe(2)
+    expect(api.refreshToken).toBe('refresh-token-2')
+  })
+
+  it('параллельные getToken делят один запрос обновления', async () => {
+    let started = 0
+    let release: (response: Response) => void = () => {}
+    routes[`${API}/auth/lkfl`] = () =>
+      jsonResponse(authPayload(futureIso(30 * 1000)))
+    routes[`${API}/auth/token`] = () => {
+      started += 1
+      return new Promise((resolve) => {
+        release = resolve
+      })
+    }
+    const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+    await api.authPromise
+
+    const first = api.getToken()
+    const second = api.getToken()
+    await Promise.resolve()
+    expect(started).toBe(1)
+
+    release(
+      jsonResponse({
+        token: 'access-token-2',
+        refreshToken: 'refresh-token-2',
+        tokenExpireIn: futureIso(),
+      }),
+    )
+    await expect(first).resolves.toBe('access-token-2')
+    await expect(second).resolves.toBe('access-token-2')
+    expect(
+      requests.filter((req) => req.url === `${API}/auth/token`),
+    ).toHaveLength(1)
   })
 })
 
@@ -242,6 +469,17 @@ describe('получение данных', () => {
     expect(req?.method).toBe('GET')
     expect(req?.body).toBeUndefined()
     expect(req?.headers.authorization).toBe('Bearer access-token')
+    expect(req?.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('отклоняет промис, если API ответил ошибкой', async () => {
+    routes[`${API}/user`] = () => jsonResponse({ message: 'не найдено' }, 404)
+    const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+    await api.authPromise
+
+    const failed = api.userInfo()
+    await expect(failed).rejects.toThrow(/не найдено/)
+    await expect(failed).rejects.toMatchObject({ status: 404 })
   })
 })
 
@@ -302,6 +540,71 @@ describe('addIncome', () => {
     expect(result).toEqual({ error: { message: 'отказ' } })
     expect(requests.some((req) => req.url.includes('/receipt/'))).toBe(false)
   })
+
+  it('возвращает error, если регистрация дохода ответила HTTP-ошибкой', async () => {
+    routes[`${API}/income`] = () => jsonResponse({ message: 'отказ' }, 400)
+    const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+    await api.authPromise
+
+    const result = await api.addIncome({ name: 'Услуга', amount: 10 })
+
+    expect(result).toEqual({ error: { message: 'отказ' } })
+    expect(requests.some((req) => req.url.includes('/receipt/'))).toBe(false)
+  })
+
+  it('округляет цену и итог одним правилом', async () => {
+    const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+    await api.authPromise
+
+    await api.addIncome({ name: 'Услуга', amount: 1.005, quantity: 2 })
+
+    const income = requests.find((req) => req.url === `${API}/income`)
+    expect(income?.body).toMatchObject({
+      services: [{ name: 'Услуга', amount: 1, quantity: 2 }],
+      totalAmount: '2.00',
+    })
+  })
+
+  it('не ходит в сеть, если сумма не число', async () => {
+    const api = new NalogAPI({ autologin: false })
+
+    await expect(
+      api.addIncome({ name: 'Услуга', amount: Number.NaN }),
+    ).rejects.toThrow(TypeError)
+    expect(requests).toHaveLength(0)
+  })
+
+  it('возвращает чек без data, если JSON чека не загрузился', async () => {
+    routes[receiptUrl] = () => jsonResponse({ message: 'нет' }, 500)
+    const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+    await api.authPromise
+
+    const receipt = await api.addIncome({ name: 'Услуга', amount: 10 })
+
+    expect(receipt).toEqual({
+      id: 'receipt-uuid-1',
+      approvedReceiptUuid: 'receipt-uuid-1',
+      jsonUrl: receiptUrl,
+      printUrl: `${API}/receipt/${LOGIN}/receipt-uuid-1/print`,
+      data: undefined,
+    })
+  })
+
+  it('возвращает чек без data, если запрос JSON чека оборвался', async () => {
+    routes[receiptUrl] = () => {
+      throw new Error('сеть чека')
+    }
+    const api = new NalogAPI({ login: LOGIN, password: PASSWORD })
+    await api.authPromise
+
+    const receipt = await api.addIncome({ name: 'Услуга', amount: 10 })
+
+    expect(receipt).toMatchObject({
+      id: 'receipt-uuid-1',
+      data: undefined,
+    })
+    expect(receipt).not.toHaveProperty('error')
+  })
 })
 
 describe('отмена чека через call', () => {
@@ -347,11 +650,46 @@ describe('отмена чека через call', () => {
 })
 
 describe('dateToLocalISO', () => {
+  const originalOffset = Date.prototype.getTimezoneOffset
+
+  afterEach(() => {
+    Date.prototype.getTimezoneOffset = originalOffset
+  })
+
   it('возвращает локальную дату со смещением', () => {
     const api = new NalogAPI({ autologin: false })
     const formatted = api.dateToLocalISO(new Date('2024-01-02T03:04:05Z'))
     expect(formatted).toMatch(
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/,
     )
+  })
+
+  it('не округляет получасовое положительное смещение', () => {
+    Date.prototype.getTimezoneOffset = () => -330
+    const api = new NalogAPI({ autologin: false })
+    expect(api.dateToLocalISO(new Date('2024-01-02T03:04:05.000Z'))).toBe(
+      '2024-01-02T08:34:05+05:30',
+    )
+  })
+
+  it('не округляет получасовое отрицательное смещение', () => {
+    Date.prototype.getTimezoneOffset = () => 210
+    const api = new NalogAPI({ autologin: false })
+    expect(api.dateToLocalISO(new Date('2024-01-02T03:04:05.000Z'))).toBe(
+      '2024-01-01T23:34:05-03:30',
+    )
+  })
+
+  it('оставляет целое смещение часа как есть', () => {
+    Date.prototype.getTimezoneOffset = () => -180
+    const api = new NalogAPI({ autologin: false })
+    expect(api.dateToLocalISO(new Date('2024-01-02T03:04:05.000Z'))).toBe(
+      '2024-01-02T06:04:05+03:00',
+    )
+  })
+
+  it('отклоняет некорректную дату', () => {
+    const api = new NalogAPI({ autologin: false })
+    expect(() => api.dateToLocalISO('не дата')).toThrow(TypeError)
   })
 })

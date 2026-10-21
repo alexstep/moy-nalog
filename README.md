@@ -21,8 +21,10 @@ npm i moy-nalog
 ```javascript
 const moyNalog = require('moy-nalog')
 
-const nalogAPI = new moyNalog({ login:'23456789', password: 'your_pass' })
+const nalogAPI = new moyNalog({ login: '000000000000', password: 'test-password' })
 ```
+
+`token` и `refreshToken` читаются с экземпляра как и раньше. `JSON.stringify(nalogAPI)` их не включает.
 
 Отправка информации о доходе
 ```javascript
